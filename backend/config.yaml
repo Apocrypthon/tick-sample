@@ -1,0 +1,69 @@
+# Active model is set via DEERTICK_MODEL in .env
+# Options: claude-sonnet-4-6 | claude-opus-4-6 | claude-haiku-4-5-20251001
+models:
+  - name: $DEERTICK_MODEL
+    display_name: $DEERTICK_MODEL
+    use: langchain_anthropic:ChatAnthropic
+    model: $DEERTICK_MODEL
+    model_name: $DEERTICK_MODEL
+    api_key: $ANTHROPIC_API_KEY
+    max_tokens: 8096
+    supports_thinking: true
+    supports_vision: false
+    when_thinking_enabled:
+      thinking:
+        type: adaptive
+
+tool_groups:
+  - name: web
+  - name: file:read
+  - name: file:write
+  - name: bash
+
+tools:
+  - name: image_search
+    group: web
+    use: src.community.image_search.tools:image_search_tool
+    max_results: 5
+  - name: ls
+    group: file:read
+    use: src.sandbox.tools:ls_tool
+  - name: read_file
+    group: file:read
+    use: src.sandbox.tools:read_file_tool
+  - name: write_file
+    group: file:write
+    use: src.sandbox.tools:write_file_tool
+  - name: str_replace
+    group: file:write
+    use: src.sandbox.tools:str_replace_tool
+  - name: bash
+    group: bash
+    use: src.sandbox.tools:bash_tool
+
+sandbox:
+  use: src.sandbox.local:LocalSandboxProvider
+
+checkpointer:
+  type: sqlite
+  connection_string: checkpoints.db
+
+memory:
+  enabled: true
+  storage_path: memory.json
+  debounce_seconds: 30
+  max_facts: 100
+  fact_confidence_threshold: 0.7
+  injection_enabled: true
+  max_injection_tokens: 2000
+
+title:
+  enabled: false
+  max_words: 6
+  max_chars: 60
+
+channels:
+  discord:
+    enabled: true
+    bot_token: $DISCORD_BOT_TOKEN
+    allowed_users: [193422083194224650]

@@ -1,0 +1,39 @@
+[project]
+name = "deer-tick"
+version = "0.1.0"
+description = "LangGraph-based AI agent system with sandbox execution capabilities"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    # ── LangGraph core ────────────────────────────────────────────────────────
+    "langchain>=1.2.3",
+    "langchain-anthropic>=1.3.4",
+    "langchain-mcp-adapters>=0.1.0",
+    "langgraph>=1.0.6",
+    "langgraph-checkpoint-sqlite>=3.0.3",
+    "pydantic>=2.12.5",
+    "pyyaml>=6.0.3",
+    "tiktoken>=0.8.0",
+    # ── Web / API ────────────────────────────────────────────────────────────
+    "fastapi>=0.115.0",
+    "httpx>=0.28.0",
+    "uvicorn[standard]>=0.34.0",
+    "sse-starlette>=2.1.0",
+    "python-multipart>=0.0.20",
+    # ── Discord gateway ──────────────────────────────────────────────────────
+    "discord-py>=2.7.1",
+    # ── Tunnel ───────────────────────────────────────────────────────────────
+    "pyngrok>=7.5.1",
+    # ── Trading connectors ───────────────────────────────────────────────────
+    "robin-stocks>=3.4.0",
+    "ccxt>=4.5.43",
+    "coinbase-advanced-py>=1.8.2",
+    "alpaca-py>=0.43.2",
+    # ── Sandbox / skills ─────────────────────────────────────────────────────
+    "readabilipy>=0.3.0",
+    "markdownify>=1.2.2",
+    "ddgs>=9.10.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0.0", "ruff>=0.14.11"]

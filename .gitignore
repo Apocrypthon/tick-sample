@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+*.venv
+
+# uv
+uv.lock
+
+# Environment / secrets
+.env
+.env.*
+!.env.template
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Runtime artifacts
+checkpoints.db
+memory.json
+*.log
+.deer-flow/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# ngrok
+*.ngrok*

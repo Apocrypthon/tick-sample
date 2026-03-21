@@ -1,0 +1,24 @@
+{
+  "mcp_servers": {
+    "brave_search": {
+      "enabled": false,
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@anthropic/mcp-server-brave-search"],
+      "env": {
+        "BRAVE_API_KEY": "$BRAVE_API_KEY"
+      },
+      "description": "Web search via Brave — used by news/social analysts"
+    },
+    "openbb": {
+      "enabled": false,
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["openbb-mcp"],
+      "env": {
+        "OPENBB_TOKEN": "$OPENBB_TOKEN"
+      },
+      "description": "OHLCV, earnings, SEC filings, FRED macro — used by market/fundamentals analysts"
+    }
+  }
+}
