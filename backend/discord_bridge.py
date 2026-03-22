@@ -16,7 +16,9 @@ logger = logging.getLogger("discord_bridge")
 async def main() -> None:
     from src.channels.direct_dispatcher import DirectDispatcher
     from src.channels.discord_channel import DiscordChannel
+    from src.hitl.gate import get_hitl_gate, DryRunThreadManager
     from src.channels.message_bus import MessageBus
+
     from src.channels.store import ChannelStore
     from src.config.app_config import get_app_config
     import src.tools as _tools_pkg
@@ -43,6 +45,13 @@ async def main() -> None:
     # -- arb scanner -----------------------------------------------------------
     scanner = ArbScanner()
     await scanner.start()
+
+    # DATA-001: start live 1m candle aggregator
+    from src.data.ws_ohlcv import start_ohlcv
+    ohlcv = await start_ohlcv(
+        symbols=["BTC/USD", "ETH/USD", "SOL/USD"]
+    )
+    logger.info("OHLCVAggregator started (%d symbols)", ohlcv.total_symbols)
     set_scanner(scanner)
     logger.info("ArbScanner started (%d symbols)", scanner.total_symbols)
 
@@ -64,7 +73,11 @@ async def main() -> None:
     store = ChannelStore()
     dispatcher = DirectDispatcher(bus=bus, store=store)
     channel = DiscordChannel(bus=bus, config=discord_cfg)
+    # Attach HITL gate singleton — used by execution node to await approvals
+    hitl_gate = get_hitl_gate()
+    logger.info("HITLGate initialized (timeout=%ds)", hitl_gate._timeout)
     target_channel_id = os.environ.get("DISCORD_ALERT_CHANNEL_ID", "")
+
     # Patch memory middleware to skip scheduler threads (prevents poisoned facts)
     try:
         import src.config.memory_config as _mc

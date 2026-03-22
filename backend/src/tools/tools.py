@@ -4,7 +4,14 @@ from langchain.tools import BaseTool
 
 from src.config import get_app_config
 from src.reflection import resolve_variable
-from src.tools.builtins import ask_clarification_tool, present_file_tool, task_tool, view_image_tool
+from src.tools.builtins import ask_clarification_tool, present_file_tool
+try:
+    from src.tools.builtins import task_tool, view_image_tool
+    _HAS_AGENT_TOOLS = True
+except ImportError:
+    task_tool      = None
+    view_image_tool = None
+    _HAS_AGENT_TOOLS = False
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +21,7 @@ BUILTIN_TOOLS = [
 ]
 
 SUBAGENT_TOOLS = [
-    task_tool,
+    *([] if task_tool is None else [task_tool]),
     # task_status_tool is no longer exposed to LLM (backend handles polling internally)
 ]
 
@@ -78,7 +85,8 @@ def get_available_tools(
     # Add view_image_tool only if the model supports vision
     model_config = config.get_model_config(model_name) if model_name else None
     if model_config is not None and model_config.supports_vision:
-        builtin_tools.append(view_image_tool)
+        if view_image_tool is not None:
+            builtin_tools.append(view_image_tool)
         logger.info(f"Including view_image_tool for model '{model_name}' (supports_vision=True)")
 
     return loaded_tools + builtin_tools + mcp_tools

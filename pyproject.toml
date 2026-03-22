@@ -1,0 +1,31 @@
+[project]
+name = "tick-sample"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "numpy>=2.4.3",
+  "pandas>=3.0.1",
+  "scipy>=1.17",
+  "statsmodels>=0.14",
+  "hmmlearn>=0.3",
+  "pykalman>=0.9",
+  "aiohttp>=3.13",
+  "pydantic>=2.12",
+  "rich>=14.0",
+  "ccxt>=4.5",
+  "coinbase-advanced-py>=1.8",
+  "alpaca-py>=0.43",
+  "robin-stocks>=3.4",
+  "discord-py>=2.7",
+  "pyngrok>=7.5",
+]
+
+[tool.uv]
+environments = ["sys_platform == 'linux'"]
+
+[build-system]
+requires      = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend/src"]

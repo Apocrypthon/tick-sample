@@ -69,3 +69,4 @@ class TradingState(ThreadState):
     # execution result
     execution_result: NotRequired[str | None]
     execution_error: NotRequired[str | None]
+    signal_context: NotRequired[dict[str, Any] | None]

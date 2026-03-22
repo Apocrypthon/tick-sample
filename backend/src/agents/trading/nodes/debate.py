@@ -1,8 +1,4 @@
-"""debate.py — adversarial debate: parallel bull/bear cases then synthesis.
-
-Flow: analyst reports → [bull_case, bear_case] parallel → synthesis manager
-The synthesis manager resolves conflicts using weighted rules.
-"""
+"""debate.py — adversarial debate with quant conviction scores."""
 from __future__ import annotations
 
 import asyncio
@@ -25,23 +21,65 @@ def _format_reports(reports: list) -> str:
     )
 
 
+def _quant_conviction_block(sig_ctx: dict) -> str:
+    """Summarise signal_context as a quant conviction header for the debate."""
+    if not sig_ctx:
+        return ""
+
+    sigs   = sig_ctx.get("signals", {})
+    regime = sig_ctx.get("regime", "UNKNOWN")
+    fg     = sig_ctx.get("fear_greed")
+    vix    = sig_ctx.get("vix", 0.0)
+
+    if not sigs:
+        return ""
+
+    scores = [s.get("score", 0.0) for s in sigs.values()]
+    avg    = sum(scores) / len(scores)
+    bias   = "BULLISH" if avg > 0.15 else "BEARISH" if avg < -0.15 else "NEUTRAL"
+
+    lines = [
+        "=== QUANTITATIVE CONVICTION (pre-debate) ===",
+        f"Composite signal score : {avg:+.4f}  →  {bias}",
+        f"Regime                 : {regime}",
+    ]
+    if fg is not None:
+        lines.append(f"Fear/Greed             : {fg}/100")
+    if vix:
+        lines.append(f"VIX proxy              : {vix:.1f}")
+
+    for pid, s in sigs.items():
+        lines.append(
+            f"  {pid:<12} score={s.get('score', 0):+.3f}  "
+            f"RSI={s.get('rsi', 0):.0f}  "
+            f"vol={s.get('vol_regime','?')}  "
+            f"kF5={s.get('kalman_forecast', 0):.2f}"
+        )
+    lines.append("=== END QUANT ===")
+    return "\n".join(lines)
+
+
 async def run_debate(state: TradingState, config: RunnableConfig) -> dict:
     """Adversarial bull/bear debate then synthesis into unified thesis."""
-    reports = state.get("analyst_reports", [])
+    reports  = state.get("analyst_reports", [])
+    sig_ctx  = state.get("signal_context") or {}
+    trigger  = state.get("trigger") or {}
+
     if not reports:
         logger.warning("Debate node: no reports — returning NEUTRAL")
         return {"debate_thesis": "NEUTRAL — no analyst data available.", "phase": "planning"}
 
-    trigger = state.get("trigger") or {}
-    formatted = _format_reports(reports)
+    formatted      = _format_reports(reports)
+    quant_block    = _quant_conviction_block(sig_ctx)
     analyst_context = (
         f"Trigger type: {trigger.get('type', 'unknown')}\n\n"
+        f"{quant_block}\n\n"
         f"Analyst Reports:\n\n{formatted}"
     )
 
     model = create_chat_model(thinking_enabled=False)
 
-    # ── phase 1: adversarial — bull and bear argue in parallel ────────────
+    # ── phase 1: parallel bull/bear ──────────────────────────────────────
     bull_task = model.ainvoke([
         SystemMessage(content=BULL_PROMPT),
         HumanMessage(content=analyst_context),
@@ -63,9 +101,10 @@ async def run_debate(state: TradingState, config: RunnableConfig) -> dict:
     bear_text = _extract(results[1], "bear")
     logger.info("Debate: bull=%d chars, bear=%d chars", len(bull_text), len(bear_text))
 
-    # ── phase 2: synthesis manager resolves ───────────────────────────────
+    # ── phase 2: synthesis manager ───────────────────────────────────────
     synthesis_input = (
         f"Trigger type: {trigger.get('type', 'unknown')}\n\n"
+        f"{quant_block}\n\n"
         f"=== BULL RESEARCHER ===\n{bull_text}\n\n"
         f"=== BEAR RESEARCHER ===\n{bear_text}\n\n"
         f"=== RAW ANALYST REPORTS ===\n{formatted}\n\n"
@@ -73,7 +112,7 @@ async def run_debate(state: TradingState, config: RunnableConfig) -> dict:
     )
 
     try:
-        resp = await model.ainvoke([
+        resp   = await model.ainvoke([
             SystemMessage(content=DEBATE_PROMPT),
             HumanMessage(content=synthesis_input),
         ])
@@ -83,8 +122,9 @@ async def run_debate(state: TradingState, config: RunnableConfig) -> dict:
         logger.exception("Debate synthesis failed")
         thesis = (
             f"[SYNTHESIS ERROR: {exc}]\n"
-            f"Bull summary: {bull_text[:300]}\n"
-            f"Bear summary: {bear_text[:300]}"
+            f"Quant bias: {_quant_conviction_block(sig_ctx)}\n"
+            f"Bull summary: {bull_text[:200]}\n"
+            f"Bear summary: {bear_text[:200]}"
         )
 
     return {"debate_thesis": thesis, "phase": "planning"}

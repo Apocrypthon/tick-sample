@@ -163,6 +163,22 @@ class DiscordChannel(Channel):
             else:
                 return
 
+            # Notify HITLGate so any awaiting coroutine unblocks
+            try:
+                from src.hitl.gate import get_hitl_gate
+                approved = (emoji == _APPROVE_EMOJI)
+                plan     = pending.get("execution_plan")
+                aid      = pending["approval_id"]
+                import asyncio as _aio
+                if self._main_loop and self._main_loop.is_running():
+                    _aio.run_coroutine_threadsafe(
+                        get_hitl_gate().resolve(aid, approved=approved, plan=plan),
+                        self._main_loop,
+                    )
+            except Exception as _ge:
+                import logging as _log
+                _log.getLogger(__name__).warning("HITLGate.resolve failed: %s", _ge)
+
             logger.info(
                 "HITL gate: %s  approval_id=%s  user=%s",
                 action, pending["approval_id"], payload.user_id,

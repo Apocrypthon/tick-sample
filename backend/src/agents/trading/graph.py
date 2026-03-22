@@ -11,11 +11,10 @@ from __future__ import annotations
 import logging
 
 from langgraph.graph import END, StateGraph
-
-from .nodes.hydrate import run_hydrate
+from .nodes.hydrate_v2 import run_hydrate
 from .nodes.analysts import run_analysts
 from .nodes.debate import run_debate
-from .nodes.planner import run_planner
+from .nodes.planner_v2 import run_planner
 from .state import TradingState
 
 logger = logging.getLogger(__name__)

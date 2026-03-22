@@ -1,9 +1,4 @@
-"""analysts.py — parallel fan-out: market / fundamentals / news / social.
-
-Receives hydrated market_data from the hydrate node. Each analyst can
-optionally invoke MCP tools (web search, OpenBB, etc.) for active research
-via a bounded tool-calling loop.
-"""
+"""analysts.py — parallel fan-out: market / fundamentals / news / social."""
 from __future__ import annotations
 
 import asyncio
@@ -27,35 +22,49 @@ from src.agents.trading.state import AnalystReport, TradingState
 
 logger = logging.getLogger(__name__)
 
-MAX_TOOL_ROUNDS = 3
-_TOOL_RESULT_CAP = 4000  # chars per tool result to prevent context blowup
+MAX_TOOL_ROUNDS  = 3
+_TOOL_RESULT_CAP = 4000
 
 _PROMPTS = {
-    "market": MARKET_ANALYST_PROMPT,
+    "market":       MARKET_ANALYST_PROMPT,
     "fundamentals": FUNDAMENTALS_ANALYST_PROMPT,
-    "news": NEWS_ANALYST_PROMPT,
-    "social": SOCIAL_ANALYST_PROMPT,
+    "news":         NEWS_ANALYST_PROMPT,
+    "social":       SOCIAL_ANALYST_PROMPT,
 }
+
+
+# ── quant context formatter ───────────────────────────────────────────────
+
+def _format_quant_context(sig_ctx: dict) -> str:
+    if not sig_ctx:
+        return ""
+    lines = ["<quant_context>"]
+    if sig_ctx.get("narrative"):
+        lines.append(f"Market: {sig_ctx['narrative']}")
+    if sig_ctx.get("regime"):
+        lines.append(f"Regime: {sig_ctx['regime']}")
+    if sig_ctx.get("fear_greed") is not None:
+        lines.append(f"Fear/Greed: {sig_ctx['fear_greed']}/100")
+    for pid, s in sig_ctx.get("signals", {}).items():
+        lines.append(
+            f"{pid}: score={s['score']:+.3f} RSI={s['rsi']:.0f} "
+            f"z={s['z']:+.2f} vol_regime={s['vol_regime']} "
+            f"kalman_5bar={s['kalman_forecast']:.4f}"
+        )
+    lines.append("</quant_context>")
+    return "\n".join(lines)
 
 
 # ── MCP tool lifecycle ────────────────────────────────────────────────────
 
-
 @asynccontextmanager
 async def _mcp_tools() -> AsyncIterator[list[BaseTool]]:
-    """Yield MCP tools with proper client lifecycle.
-
-    MultiServerMCPClient is a context manager — tool connections only stay
-    alive while the client is open.  Yields [] on any failure so callers
-    never need to handle errors.
-    """
     try:
         from langchain_mcp_adapters.client import MultiServerMCPClient
     except ImportError:
         logger.debug("langchain-mcp-adapters not installed — no MCP tools")
         yield []
         return
-
     try:
         from src.config.extensions_config import ExtensionsConfig
         from src.mcp.client import build_servers_config
@@ -67,7 +76,6 @@ async def _mcp_tools() -> AsyncIterator[list[BaseTool]]:
             yield []
             return
 
-        # Inject OAuth headers (mirrors existing get_mcp_tools logic)
         oauth_headers = await get_initial_oauth_headers(ext)
         for name, hdr in oauth_headers.items():
             if name in cfg and cfg[name].get("transport") in ("sse", "http"):
@@ -84,7 +92,6 @@ async def _mcp_tools() -> AsyncIterator[list[BaseTool]]:
             tools = await client.get_tools()
             logger.info("MCP: %d tool(s) available for analysts", len(tools))
             yield tools
-
     except Exception as exc:
         logger.warning("MCP tools unavailable: %s", exc)
         yield []
@@ -92,9 +99,7 @@ async def _mcp_tools() -> AsyncIterator[list[BaseTool]]:
 
 # ── tool execution ────────────────────────────────────────────────────────
 
-
 async def _exec_tool(tools_map: dict[str, BaseTool], tc: dict) -> str:
-    """Execute a single tool call, returning truncated string result."""
     tool = tools_map.get(tc["name"])
     if not tool:
         return f"Unknown tool: {tc['name']}"
@@ -108,8 +113,7 @@ async def _exec_tool(tools_map: dict[str, BaseTool], tc: dict) -> str:
         return f"Tool error ({tc['name']}): {e}"
 
 
-# ── analyst with tool loop ────────────────────────────────────────────────
-
+# ── confidence extractor ──────────────────────────────────────────────────
 
 def _extract_confidence(text: str) -> str:
     for line in text.splitlines():
@@ -120,21 +124,23 @@ def _extract_confidence(text: str) -> str:
     return "MEDIUM"
 
 
+# ── single analyst runner ─────────────────────────────────────────────────
+
 async def _call_analyst(
     role: str, context: str, model, tools: list[BaseTool],
 ) -> AnalystReport:
-    """Run one analyst with an optional bounded tool-calling loop."""
     try:
         tools_map = {t.name: t for t in tools}
         bound = model.bind_tools(tools) if tools else model
-        msgs: list = [SystemMessage(content=_PROMPTS[role]), HumanMessage(content=context)]
-
+        msgs: list = [
+            SystemMessage(content=_PROMPTS[role]),
+            HumanMessage(content=context),
+        ]
         resp = None
         for round_i in range(MAX_TOOL_ROUNDS):
             resp = await bound.ainvoke(msgs)
             if not getattr(resp, "tool_calls", None):
                 break
-            # Process tool calls
             msgs.append(resp)
             names = []
             for tc in resp.tool_calls:
@@ -143,7 +149,6 @@ async def _call_analyst(
                 names.append(tc["name"])
             logger.info("Analyst[%s] tool round %d: %s", role, round_i + 1, names)
         else:
-            # Exhausted tool rounds — force plain text response
             resp = await model.ainvoke(msgs)
 
         content = resp.content if isinstance(resp.content, str) else str(resp.content)
@@ -156,7 +161,6 @@ async def _call_analyst(
         return AnalystReport(
             analyst=role, content=content, confidence=conf, timestamp=time.time(),
         )
-
     except Exception as exc:
         logger.exception("Analyst[%s] failed", role)
         return AnalystReport(
@@ -167,8 +171,7 @@ async def _call_analyst(
         )
 
 
-# ── context building (unchanged) ─────────────────────────────────────────
-
+# ── context builder ───────────────────────────────────────────────────────
 
 def _format_quotes(quotes: dict) -> str:
     if not quotes:
@@ -191,7 +194,11 @@ def _format_portfolios(portfolios: dict) -> str:
     return "\n".join(lines)
 
 
-def _build_context(trigger: dict | None, market_data: dict | None = None) -> str:
+def _build_context(
+    trigger: dict | None,
+    market_data: dict | None = None,
+    signal_context: dict | None = None,
+) -> str:
     if not trigger:
         return "Perform a general portfolio review. No specific trigger context provided."
 
@@ -232,19 +239,24 @@ def _build_context(trigger: dict | None, market_data: dict | None = None) -> str
         lines.append(_format_portfolios(market_data.get("portfolios", {})))
         lines.append("━━━ END LIVE DATA ━━━")
 
+    if signal_context:
+        quant = _format_quant_context(signal_context)
+        if quant:
+            lines.append(f"\n{quant}")
+
     return "\n".join(lines)
 
 
 # ── node entry point ──────────────────────────────────────────────────────
 
-
 async def run_analysts(state: TradingState, config: RunnableConfig) -> dict:
     """Parallel fan-out to 4 specialist analysts with hydrated context + MCP tools."""
-    trigger = state.get("trigger")
-    market_data = state.get("market_data")
-    context = _build_context(trigger, market_data)
-    t_type = trigger.get("type", "none") if trigger else "none"
-    model = create_chat_model(thinking_enabled=False)
+    trigger        = state.get("trigger")
+    market_data    = state.get("market_data")
+    signal_context = state.get("signal_context") or {}
+    context        = _build_context(trigger, market_data, signal_context)
+    t_type         = trigger.get("type", "none") if trigger else "none"
+    model          = create_chat_model(thinking_enabled=False)
 
     async with _mcp_tools() as tools:
         logger.info(
@@ -252,10 +264,10 @@ async def run_analysts(state: TradingState, config: RunnableConfig) -> dict:
             t_type, bool(market_data), len(tools),
         )
         reports = await asyncio.gather(
-            _call_analyst("market", context, model, tools),
+            _call_analyst("market",       context, model, tools),
             _call_analyst("fundamentals", context, model, tools),
-            _call_analyst("news", context, model, tools),
-            _call_analyst("social", context, model, tools),
+            _call_analyst("news",         context, model, tools),
+            _call_analyst("social",       context, model, tools),
         )
 
     return {"analyst_reports": list(reports), "phase": "debate"}

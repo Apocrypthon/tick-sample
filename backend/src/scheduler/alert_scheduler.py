@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from src.scheduler.quant_memory import MarketSignal, QuantMemory, get_qmem
+from src.scheduler.quant_memory_v2 import MarketSignalV2, get_qmem_v2
 
 logger = logging.getLogger(__name__)
 
@@ -173,9 +174,9 @@ class AlertScheduler:
         await self._send("🔄 **Rebalance scan started…**")
         capital = self._get_capital()
         try:
-            qmem_ctx = get_qmem().summary(5)
+            qmem_ctx = get_qmem_v2().summary(5)
         except Exception:
-            qmem_ctx = "QMem unavailable"
+            qmem_ctx = get_qmem().summary(5)
 
         trigger = {
             "type": "rebalance",
@@ -195,6 +196,12 @@ class AlertScheduler:
 
         try:
             get_qmem().push(MarketSignal(vix_fear=self._state.vix_last or 20.0, signal_type=0))
+            get_qmem_v2().push(MarketSignalV2(
+                vix_fear=self._state.vix_last or 20.0,
+                signal_type=0,
+                btc_momentum=float(trigger.get('qmem_ctx', '0').split('BTC')[1].split('%')[0])
+                if 'BTC' in str(trigger.get('qmem_ctx', '')) else 0.0,
+            ))
         except Exception:
             pass
 
@@ -248,6 +255,11 @@ class AlertScheduler:
 
         try:
             get_qmem().push(MarketSignal(arb_profit_pct=opp.profit_pct, signal_type=1))
+            get_qmem_v2().push(MarketSignalV2(
+                arb_profit_pct=opp.profit_pct,
+                signal_type=1,
+                vix_fear=self._state.vix_last or 20.0,
+            ))
         except Exception:
             pass
 
