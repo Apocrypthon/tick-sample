@@ -104,98 +104,25 @@ class OHLCVAggregator:
         })
 
     async def _watch_symbol(self, symbol: str) -> None:
-        backoff = 1
+        """Poll 1m OHLCV bars via REST fetch_ohlcv (Coinbase does not support watchOHLCV)."""
+        backoff = 5
+        last_ts  = 0
         while self._running:
             try:
-                while self._running:
-                    ohlcv = await self._exchange.watchOHLCV(symbol, self.TIMEFRAME)
-                    self._process_bars(symbol, ohlcv)
-                    backoff = 1
+                # fetch last 3 closed 1m bars (REST — works on all ccxt exchanges)
+                candles = await asyncio.to_thread(
+                    self._exchange.fetch_ohlcv, symbol, "1m", limit=3
+                )
+                if candles:
+                    new_candles = [c for c in candles if c[0] > last_ts]
+                    if new_candles:
+                        self._process_bars(symbol, new_candles)
+                        last_ts = new_candles[-1][0]
+                await asyncio.sleep(60)   # poll once per minute
+                backoff = 5
             except asyncio.CancelledError:
                 return
             except Exception as exc:
-                logger.warning("OHLCVAggregator[%s] error: %s — retry in %ds",
-                               symbol, exc, backoff)
+                logger.warning("OHLCVAggregator[%s] error: %s — retry in %ds", symbol, exc, backoff)
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 60)
-
-    def _process_bars(self, symbol: str, ohlcv: list) -> None:
-        if not ohlcv:
-            return
-        buf     = self._buffers.setdefault(symbol, CandleBuffer(symbol))
-        now_min = int(time.time() // 60) * 60
-
-        for row in ohlcv:
-            ts_ms, o, h, l, c, vol = row
-            ts_min   = int(ts_ms // 1000 // 60) * 60
-            complete = ts_min < now_min
-            candle   = Candle(symbol=symbol, ts_open=ts_min,
-                              open=float(o), high=float(h),
-                              low=float(l),  close=float(c),
-                              volume=float(vol), complete=complete)
-
-            if complete and ts_min > self._last_ts.get(symbol, 0):
-                buf.push(candle)
-                self._last_ts[symbol] = ts_min
-                logger.debug("Candle[%s] C=%.4g V=%.4g", symbol, c, vol)
-                if self._on_candle:
-                    try:
-                        self._on_candle(candle)
-                    except Exception as exc:
-                        logger.warning("on_candle callback error: %s", exc)
-
-    def buffer(self, symbol: str) -> Optional[CandleBuffer]:
-        return self._buffers.get(symbol)
-
-    def latest_candle(self, symbol: str) -> Optional[Candle]:
-        buf = self._buffers.get(symbol)
-        return buf.bars[-1] if buf and buf.bars else None
-
-    def closes(self, symbol: str, n: int = 60) -> list[float]:
-        buf = self._buffers.get(symbol)
-        return buf.closes(n) if buf else []
-
-    def is_warm(self, symbol: str, min_bars: int = 20) -> bool:
-        buf = self._buffers.get(symbol)
-        return bool(buf and len(buf) >= min_bars)
-
-    def summary(self) -> str:
-        parts = []
-        for sym in self._symbols:
-            buf = self._buffers.get(sym)
-            if buf and buf.bars:
-                last = buf.bars[-1]
-                parts.append(f"{sym}: {len(buf)} bars  C={last.close:.4g}")
-            else:
-                parts.append(f"{sym}: warming up")
-        return " | ".join(parts)
-
-    @property
-    def symbols_warm(self) -> int:
-        return sum(1 for s in self._symbols if self.is_warm(s))
-
-    @property
-    def total_symbols(self) -> int:
-        return len(self._symbols)
-
-
-_aggregator: Optional[OHLCVAggregator] = None
-
-
-def get_ohlcv_aggregator(
-    symbols:   list[str] | None = None,
-    on_candle: Optional[Callable[[Candle], None]] = None,
-) -> OHLCVAggregator:
-    global _aggregator
-    if _aggregator is None:
-        _aggregator = OHLCVAggregator(symbols=symbols, on_candle=on_candle)
-    return _aggregator
-
-
-async def start_ohlcv(
-    symbols:   list[str] | None = None,
-    on_candle: Optional[Callable[[Candle], None]] = None,
-) -> OHLCVAggregator:
-    agg = get_ohlcv_aggregator(symbols=symbols, on_candle=on_candle)
-    await agg.start()
-    return agg

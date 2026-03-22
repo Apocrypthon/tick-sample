@@ -1,11 +1,11 @@
 # Active model is set via DEERTICK_MODEL in .env
 # Options: claude-sonnet-4-6 | claude-opus-4-6 | claude-haiku-4-5-20251001
 models:
-  - name: $DEERTICK_MODEL
-    display_name: $DEERTICK_MODEL
+  - name: $TICK_SAMPLE_MODEL
+    display_name: $TICK_SAMPLE_MODEL
     use: langchain_anthropic:ChatAnthropic
-    model: $DEERTICK_MODEL
-    model_name: $DEERTICK_MODEL
+    model: $TICK_SAMPLE_MODEL
+    model_name: $TICK_SAMPLE_MODEL
     api_key: $ANTHROPIC_API_KEY
     max_tokens: 8096
     supports_thinking: true
