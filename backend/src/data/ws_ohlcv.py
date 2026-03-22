@@ -84,6 +84,10 @@ class OHLCVAggregator:
         logger.info("OHLCVAggregator started — %d symbols @ %s",
                     len(self._symbols), self.TIMEFRAME)
 
+    @property
+    def total_symbols(self) -> int:
+        return len(self._symbols)
+
     async def stop(self) -> None:
         self._running = False
         for t in self._tasks:
@@ -110,9 +114,7 @@ class OHLCVAggregator:
         while self._running:
             try:
                 # fetch last 3 closed 1m bars (REST — works on all ccxt exchanges)
-                candles = await asyncio.to_thread(
-                    self._exchange.fetch_ohlcv, symbol, "1m", limit=3
-                )
+                candles = await self._exchange.fetch_ohlcv(symbol, "1m", limit=3)
                 if candles:
                     new_candles = [c for c in candles if c[0] > last_ts]
                     if new_candles:
@@ -126,3 +128,19 @@ class OHLCVAggregator:
                 logger.warning("OHLCVAggregator[%s] error: %s — retry in %ds", symbol, exc, backoff)
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 60)
+
+
+# singleton
+_ohlcv_instance: "OHLCVAggregator | None" = None
+
+def get_ohlcv_aggregator(symbols: list[str] | None = None) -> "OHLCVAggregator":
+    global _ohlcv_instance
+    if _ohlcv_instance is None:
+        _ohlcv_instance = OHLCVAggregator(symbols or ["BTC/USD", "ETH/USD", "SOL/USD"])
+    return _ohlcv_instance
+
+async def start_ohlcv(symbols: list[str] | None = None) -> "OHLCVAggregator":
+    """Convenience: create, start, and return the singleton OHLCVAggregator."""
+    agg = get_ohlcv_aggregator(symbols)
+    await agg.start()
+    return agg
