@@ -106,7 +106,13 @@ async def main() -> None:
     init_webhook(bus, loop)
 
     def _run_webhook():
-        import uvicorn
+        import uvicorn, subprocess
+        # Free port 8080 if held by a stale process
+        try:
+            subprocess.run(["fuser", "-k", "8080/tcp"],
+                           capture_output=True, timeout=3)
+        except Exception:
+            pass
         uvicorn.run(webhook_app, host="0.0.0.0", port=8080, log_level="warning")
 
     webhook_thread = threading.Thread(target=_run_webhook, daemon=True)

@@ -85,8 +85,9 @@ class DiscordChannel(Channel):
         self.bus.subscribe_outbound(self._on_outbound)
 
         intents = discord.Intents.default()
-        intents.message_content = True
+        intents.message_content = True   # enable in dev portal: Bot → Message Content Intent
         intents.reactions = True
+        intents.messages = True
         client = discord.Client(intents=intents)
         self._client = client
 

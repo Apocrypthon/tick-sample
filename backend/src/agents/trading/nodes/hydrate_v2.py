@@ -1,4 +1,10 @@
 """hydrate_v2.py — enriched hydrate node with signal engine + market intelligence."""
+import sys as _sys, pathlib as _pl
+_src = str(_pl.Path(__file__).resolve().parents[4] / "src")
+if _src not in _sys.path:
+    _sys.path.insert(0, _src)
+del _sys, _pl, _src
+
 from __future__ import annotations
 
 import asyncio
